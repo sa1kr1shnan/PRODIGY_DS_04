@@ -1,0 +1,350 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import seaborn as sns
+import re
+from textblob import TextBlob
+import emoji
+from nltk.tokenize import word_tokenize,sent_tokenize
+import spacy
+from nltk.stem.porter import PorterStemmer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+import torch
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from nltk.corpus import stopwords
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score,confusion_matrix
+import warnings
+warnings.filterwarnings("ignore")
+
+
+from google.colab import files
+uploaded = files.upload()
+
+df=pd.read_csv('IMDB Dataset.csv')
+df.head()
+
+df.info()
+
+df['review'][100].lower()
+
+df['review']=df['review'].str.lower()
+df.head()
+
+def remove_html_tags(text):
+    pattern = re.compile('<.*?>')
+    return pattern.sub('', text)
+
+df['review']=df['review'].apply(remove_html_tags)
+df.head()
+
+#Removing URLs
+def remove_url(text):
+    pattern=re.compile(r'https?://\S+|www\.\S+')
+    return pattern.sub(r'',text)
+
+text='Checkout this webpage to learn more about deep learning https://www.deeplearning.ai/ai-notes/initialization/index.html'
+remove_url(text)
+
+#Removing punchuation
+import string,time
+string.punctuation
+
+exclude=string.punctuation
+def remove_punc(text):
+    for char in exclude:
+        text=text.replace(char,'')
+    return text
+
+text='okay, so. this, is/ just a, text, with. punc'
+remove_punc(text)
+start=time.time()
+print(remove_punc(text))
+time1=time.time()-start
+print(time1)
+
+def remove_punc1(text):
+    return text.translate(str.maketrans('','',exclude))
+    
+remove_punc(text)
+start=time.time()
+print(remove_punc1(text))
+time1=time.time()-start
+print(time1)
+
+#GenZ Lingo treatment
+chat_word = {
+    'AFAIK': 'As Far As I Know',
+    'AFK': 'Away From Keyboard',
+    'ASAP': 'As Soon As Possible',
+    'ATK': 'At The Keyboard',
+    'ATM': 'At The Moment',
+    'A3': 'Anytime, Anywhere, Anyplace',
+    'BAK': 'Back At Keyboard',
+    'BBL': 'Be Back Later',
+    'BBS': 'Be Back Soon',
+    'BFN': 'Bye For Now',
+    'B4N': 'Bye For Now',
+    'BRB': 'Be Right Back',
+    'BRT': 'Be Right There',
+    'BTW': 'By The Way',
+    'B4': 'Before',
+    'CU': 'See You',
+    'CUL8R': 'See You Later',
+    'CYA': 'See You',
+    'FAQ': 'Frequently Asked Questions',
+    'FC': 'Fingers Crossed',
+    'FWIW': "For What It's Worth",
+    'FYI': 'For Your Information',
+    'GAL': 'Get A Life',
+    'GG': 'Good Game',
+    'GN': 'Good Night',
+    'GMTA': 'Great Minds Think Alike',
+    'GR8': 'Great!',
+    'G9': 'Genius',
+    'IC': 'I See',
+    'ICQ': 'I Seek you (also a chat program)',
+    'ILU': 'ILU: I Love You',
+    'IMHO': 'In My Honest/Humble Opinion',
+    'IMO': 'In My Opinion',
+    'IOW': 'In Other Words',
+    'IRL': 'In Real Life',
+    'KISS': 'Keep It Simple, Stupid',
+    'LDR': 'Long Distance Relationship',
+    'LMAO': 'Laugh My A.. Off',
+    'LOL': 'Laughing Out Loud',
+    'LTNS': 'Long Time No See',
+    'L8R': 'Later',
+    'MTE': 'My Thoughts Exactly',
+    'M8': 'Mate',
+    'NRN': 'No Reply Necessary',
+    'OIC': 'Oh I See',
+    'PITA': 'Pain In The A..',
+    'PRT': 'Party',
+    'PRW': 'Parents Are Watching',
+    'QPSA?': 'Que Pasa?',
+    'ROFL': 'Rolling On The Floor Laughing',
+    'ROFLOL': 'Rolling On The Floor Laughing Out Loud',
+    'ROTFLMAO': 'Rolling On The Floor Laughing My A.. Off',
+    'SK8': 'Skate',
+    'STATS': 'Your sex and age',
+    'ASL': 'Age, Sex, Location',
+    'THX': 'Thank You',
+    'TTFN': 'Ta-Ta For Now!',
+    'TTYL': 'Talk To You Later',
+    'U': 'You',
+    'U2': 'You Too',
+    'U4E': 'Yours For Ever',
+    'WB': 'Welcome Back',
+    'WTF': 'What The F...',
+    'WTG': 'Way To Go!',
+    'WUF': 'Where Are You From?',
+    'W8': 'Wait...',
+    '7K': 'Sick:-D Laugher',
+    'TFW': 'That feeling when',
+    'MFW': 'My face when',
+    'MRW': 'My reaction when',
+    'IFYP': 'I feel your pain',
+    'TNTL': 'Trying not to laugh',
+    'JK': 'Just kidding',
+    'IDC': "I don't care",
+    'ILY': 'I love you',
+    'IMU': 'I miss you',
+    'ADIH': 'Another day in hell',
+    'ZZZ': 'Sleeping, bored, tired',
+    'WYWH': 'Wish you were here',
+    'TIME': 'Tears in my eyes',
+    'BAE': 'Before anyone else',
+    'FIMH': 'Forever in my heart',
+    'BSAAW': 'Big smile and a wink',
+    'BWL': 'Bursting with laughter',
+    'BFF': 'Best friends forever',
+    'CSL': "Can't stop laughing"
+}
+
+def short_conv(text):
+    new_text = []
+    for w in text.split():
+        if w.upper() in chat_word:
+            new_text.append(chat_word[w.upper()])
+        else:
+            new_text.append(w)
+    return " ".join(new_text)
+
+
+short_conv("ASAP let me know please")
+
+#Spelling correction
+
+text=" ceertainli I dont kniw what is wrrong herre"
+textblb=TextBlob(text)
+textblb.correct().string
+
+#Removing StopWords
+import nltk
+nltk.download('stopwords')
+
+from nltk.corpus import stopwords
+stopwords.words("english")
+
+def remove_stopwords(text):
+    new_text=[]
+    for word in text.split():
+        if word in stopwords.words('english'):
+            new_text.append('')
+        else:
+            new_text.append(word)
+            
+    x=new_text[:]
+    new_text.clear()
+    return " ".join(x)
+
+text="I wasn't sure that this might happened"
+remove_stopwords(text)
+
+#Handling emojis
+!pip install emoji
+def remove_emoji(text):
+    emoji_pattern=re.compile("["
+                             u"\U0001F600-\U0001F64F" #emoticons
+                             u"\U0001F300-\U0001F5FF" #symbols, pictograph
+                              u"\U0001F680-\U0001F6FF" #transport and map symbol
+                              u"\U0001F1E0-\U0001F1FF" # flags(IOS)
+                              u"\U00002702-\U000027B0"
+                              u"\U00002FC2-\U0001F251"
+                             "]+",flags=re.UNICODE)
+    return emoji_pattern.sub(r'',text)
+
+text="that is not so funny please stop 😭"
+remove_emoji(text)
+
+import emoji
+print(emoji.demojize(text))
+
+#Tokenization
+sent1="I am going to delhi"
+from nltk.tokenize import word_tokenize,sent_tokenize
+word_tokenize(sent1)
+
+sent2='I have a Ph.D in M.L'
+sent3="We're here to help! mail us at xuz@gmail.com"
+
+word_tokenize(sent2)
+word_tokenize(sent3)
+
+#Stemming
+ps=PorterStemmer()
+def stem_words(text):
+    return " ".join([ps.stem(word) for word in text.split()])
+
+sample="Walk walking walked walks"
+stem_words(sample)
+
+sample2='Stemming is a text preprocessing technique in NLP that reduces words to their root or base form by removing suffixes. Unlike lemmatization, which relies on linguistic rules, stemming uses heuristic methods to strip affixes. For example, "running," "runner," and "ran" might all be reduced to "run." Common algorithms include the Porter Stemmer, which applies a series of rules to iteratively strip suffixes, and the Snowball Stemmer, which is an improved version of the Porter Stemmer. While stemming is faster and simpler than lemmatization, it can be less accurate, sometimes producing stems that are not actual words.'
+stem_words(sample2)
+
+#Lemmatization
+nlp = spacy.load('en_core_web_sm')
+
+sentence = "The children were playing in the park, running and laughing as they enjoyed their freedom, unaware of the time passing quickly by."
+doc = nlp(sentence)
+
+print("Original Word - Lemmatized Word")
+for token in doc:
+    print(f"{token.text} - {token.lemma_}")
+
+df.duplicated().sum()
+
+df.drop_duplicates(inplace=True)
+
+def remove_tags(raw_text):
+    cleaned_text = re.sub(re.compile('<.*?>'), '', raw_text)
+    return cleaned_text
+df['review'] = df['review'].apply(remove_tags)
+
+sw_list = stopwords.words('english')
+df['review'] = df['review'].apply(lambda x: [item for item in x.split() if item not in sw_list]).apply(lambda x:" ".join(x))
+
+df['review'] = df['review'].apply(lambda x:x.lower())
+
+#splitting target and features
+X = df.iloc[:,0:1]
+y = df['sentiment']
+
+#Encoding
+encoder = LabelEncoder()
+y = encoder.fit_transform(y)
+
+#train-test-split
+X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=0.2,random_state=1)
+X_train.shape
+
+#applying bag of words
+cv = CountVectorizer()
+X_train_bow = cv.fit_transform(X_train['review']).toarray()
+X_test_bow = cv.transform(X_test['review']).toarray()
+
+X_train_bow.shape
+
+#Training with GaussianNB
+gnb = GaussianNB()
+
+gnb.fit(X_train_bow,y_train)
+
+y_pred = gnb.predict(X_test_bow)
+
+accuracy_score(y_test,y_pred)
+
+confusion_matrix(y_test,y_pred)
+
+#Training with Random Forest Classifier
+
+rf = RandomForestClassifier()
+
+rf.fit(X_train_bow,y_train)
+y_pred = rf.predict(X_test_bow)
+accuracy_score(y_test,y_pred)
+
+cv = CountVectorizer(max_features=3000)
+
+X_train_bow = cv.fit_transform(X_train['review']).toarray()
+X_test_bow = cv.transform(X_test['review']).toarray()
+
+rf = RandomForestClassifier()
+
+rf.fit(X_train_bow,y_train)
+y_pred = rf.predict(X_test_bow)
+accuracy_score(y_test,y_pred)
+
+
+cv = CountVectorizer(ngram_range=(1,2),max_features=5000)
+
+X_train_bow = cv.fit_transform(X_train['review']).toarray()
+X_test_bow = cv.transform(X_test['review']).toarray()
+
+rf = RandomForestClassifier()
+
+rf.fit(X_train_bow,y_train)
+y_pred = rf.predict(X_test_bow)
+accuracy_score(y_test,y_pred)
+
+
+#training usinf tf-idf vectoriser
+tfidf = TfidfVectorizer()
+
+X_train_tfidf = tfidf.fit_transform(X_train['review']).toarray()
+X_test_tfidf = tfidf.transform(X_test['review'])
+
+rf = RandomForestClassifier()
+
+rf.fit(X_train_tfidf,y_train)
+y_pred = rf.predict(X_test_tfidf)
+
+accuracy_score(y_test,y_pred)
+
+
